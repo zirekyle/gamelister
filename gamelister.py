@@ -130,6 +130,12 @@ def write_to_csv(csv_filename, object_input, field_names, sort_field, singleston
                 logging.info("No genre for {}".format(obj['name']))
 
             try:
+                if obj['category'] == 1 or obj['category'] == 3:
+                    continue
+            except KeyError:
+                continue
+
+            try:
                 obj['first_release_date'] = clean_time(int(obj['first_release_date'] / 1000))
             except KeyError:
                 logging.info("No release date for {}".format(obj['name']))
@@ -151,14 +157,19 @@ def main():
 
     db = api_connect(key_file)
 
-    filters = {'[platforms][eq]': 11}
+    # Debug: Individual game lookup
+    # res = db.games(26086)
+    # print(json.dumps(res.json(), indent=4))
+    # sys.exit()
 
-    fields = ['id', 'name', 'platforms',
+    filters = {'[platforms][eq]': 130}
+
+    fields = ['id', 'name', 'platforms', 'category',
               'total_rating', 'genres', 'first_release_date']
 
     games = get_all_games(db, filters, fields)
 
-    write_to_csv('all_xbox_games.csv', games, fields, 'name', singlestons_only=True)
+    write_to_csv('all_switch_games.csv', games, fields, 'name', singlestons_only=True)
 
 
 if __name__ == '__main__':
