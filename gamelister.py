@@ -11,6 +11,8 @@ import datetime
 
 import pygsheets
 
+from time import sleep
+from collections import OrderedDict
 from igdb_api_python import igdb
 
 # API credential files
@@ -18,10 +20,174 @@ igdb_key_file = '.igdb_api_key'
 gsheet_json_file = '.gsheet.service.json'
 
 # Array of desired field names
-get_fields = ['id', 'name', 'rating', 'rating_count', 'total_rating', 'total_rating_count', 'category', 'genres', 'platforms', 'first_release_date']
+get_fields = ['id', 'name', 'total_rating', 'total_rating_count', 'category', 'genres', 'platforms', 'first_release_date']
 
 # Logger creation
 logger = logging.getLogger(__name__)
+
+all_platforms = {
+    3: 'Linux',
+    4: 'Nintendo 64',
+    5: 'Wii',
+    6: 'PC (Microsoft Windows)',
+    7: 'PlayStation',
+    8: 'PlayStation 2',
+    9: 'PlayStation 3',
+    11: 'Xbox',
+    12: 'Xbox 360',
+    13: 'PC DOS',
+    14: 'Mac',
+    15: 'Commodore C64/128',
+    16: 'Amiga',
+    18: 'Nintendo Entertainment System (NES)',
+    19: 'Super Nintendo Entertainment System (SNES)',
+    20: 'Nintendo DS',
+    21: 'Nintendo GameCube',
+    22: 'Game Boy Color',
+    23: 'Dreamcast',
+    24: 'Game Boy Advance',
+    25: 'Amstrad CPC',
+    26: 'ZX Spectrum',
+    27: 'MSX',
+    29: 'Sega Mega Drive/Genesis',
+    30: 'Sega 32X',
+    32: 'Sega Saturn',
+    33: 'Game Boy',
+    34: 'Android',
+    35: 'Sega Game Gear',
+    36: 'Xbox Live Arcade',
+    37: 'Nintendo 3DS',
+    38: 'PlayStation Portable',
+    39: 'iOS',
+    41: 'Wii U',
+    42: 'N-Gage',
+    44: 'Tapwave Zodiac',
+    45: 'PlayStation Network',
+    46: 'PlayStation Vita',
+    47: 'Virtual Console (Nintendo)',
+    48: 'PlayStation 4',
+    49: 'Xbox One',
+    50: '3DO Interactive Multiplayer',
+    51: 'Family Computer Disk System',
+    52: 'Arcade',
+    53: 'MSX2',
+    55: 'Mobile',
+    56: 'WiiWare',
+    57: 'WonderSwan',
+    58: 'Super Famicom',
+    59: 'Atari 2600',
+    60: 'Atari 7800',
+    61: 'Atari Lynx',
+    62: 'Atari Jaguar',
+    63: 'Atari ST/STE',
+    64: 'Sega Master System',
+    65: 'Atari 8-bit',
+    66: 'Atari 5200',
+    67: 'Intellivision',
+    68: 'ColecoVision',
+    69: 'BBC Microcomputer System',
+    70: 'Vectrex',
+    71: 'Commodore VIC-20',
+    72: 'Ouya',
+    73: 'BlackBerry OS',
+    74: 'Windows Phone',
+    75: 'Apple II',
+    77: 'Sharp X1',
+    78: 'Sega CD',
+    79: 'Neo Geo MVS',
+    80: 'Neo Geo AES',
+    82: 'Web browser',
+    84: 'SG-1000',
+    85: 'Donner Model 30',
+    86: 'TurboGrafx-16/PC Engine',
+    87: 'Virtual Boy',
+    88: 'Odyssey',
+    89: 'Microvision',
+    90: 'Commodore PET',
+    91: 'Bally Astrocade',
+    92: 'SteamOS',
+    93: 'Commodore 16',
+    94: 'Commodore Plus/4',
+    95: 'PDP-1',
+    96: 'PDP-10',
+    97: 'PDP-8',
+    98: 'DEC GT40',
+    99: 'Family Computer (FAMICOM)',
+    100: 'Analogue electronics',
+    101: 'Ferranti Nimrod Computer',
+    102: 'EDSAC',
+    103: 'PDP-7',
+    104: 'HP 2100',
+    105: 'HP 3000',
+    106: 'SDS Sigma 7',
+    107: 'Call-A-Computer time-shared mainframe computer system',
+    108: 'PDP-11',
+    109: 'CDC Cyber 70',
+    110: 'PLATO',
+    111: 'Imlac PDS-1',
+    112: 'Microcomputer',
+    113: 'OnLive Game System',
+    114: 'Amiga CD32',
+    115: 'Apple IIGS',
+    116: 'Acorn Archimedes',
+    117: 'Philips CD-i',
+    118: 'FM Towns',
+    119: 'Neo Geo Pocket',
+    120: 'Neo Geo Pocket Color',
+    121: 'Sharp X68000',
+    122: 'Nuon',
+    123: 'WonderSwan Color',
+    124: 'SwanCrystal',
+    125: 'PC-8801',
+    126: 'TRS-80',
+    127: 'Fairchild Channel F',
+    128: 'PC Engine SuperGrafx',
+    129: 'Texas Instruments TI-99',
+    130: 'Nintendo Switch',
+    131: 'Nintendo PlayStation',
+    132: 'Amazon Fire TV',
+    133: 'Philips Videopac G7000',
+    134: 'Acorn Electron',
+    135: 'Hyper Neo Geo 64',
+    136: 'Neo Geo CD',
+    137: 'New Nintendo 3DS',
+    138: 'VC 4000',
+    139: '1292 Advanced Programmable Video System',
+    140: 'AY-3-8500',
+    141: 'AY-3-8610',
+    142: 'PC-50X Family',
+    143: 'AY-3-8760',
+    144: 'AY-3-8710',
+    145: 'AY-3-8603',
+    146: 'AY-3-8605',
+    147: 'AY-3-8606',
+    148: 'AY-3-8607',
+    149: 'PC-98',
+    150: 'Turbografx-16/PC Engine CD',
+    151: 'TRS-80 Color Computer',
+    152: 'FM-7',
+    153: 'Dragon 32/64',
+    154: 'Amstrad PCW',
+    155: 'Tatung Einstein',
+    156: 'Thomson MO5',
+    157: 'NEC PC-6000 Series',
+    158: 'Commodore CDTV',
+    159: 'Nintendo DSi',
+    160: 'Nintendo eShop',
+    161: 'Windows Mixed Reality',
+    162: 'Oculus VR',
+    163: 'SteamVR',
+    164: 'Daydream',
+    165: 'PlayStation VR'
+}
+
+computer_platforms = ['PC (Microsoft Windows)', 'Mac', 'Linux', 'SteamOS']
+
+xbox_platforms = ['Xbox', 'Xbox 360', 'Xbox One']
+
+playstation_platforms = ['Playstation', 'Playstation 2', 'Playstation 3', 'Playstation 4']
+
+nintendo_platforms = ['Nintendo Entertainment System (NES)', 'Super Nintendo Entertainment System (SNES)', 'Nintendo 64', 'Nintendo Gamecube', 'Wii U', 'Nintendo Switch']
 
 
 def igdb_api_connect():
@@ -64,162 +230,6 @@ def find_platform(search):
     """
 
     # Initialize full platform ID array
-
-    all_platforms = {
-        3: 'Linux',
-        4: 'Nintendo 64',
-        5: 'Wii',
-        6: 'PC (Microsoft Windows)',
-        7: 'PlayStation',
-        8: 'PlayStation 2',
-        9: 'PlayStation 3',
-        11: 'Xbox',
-        12: 'Xbox 360',
-        13: 'PC DOS',
-        14: 'Mac',
-        15: 'Commodore C64/128',
-        16: 'Amiga',
-        18: 'Nintendo Entertainment System (NES)',
-        19: 'Super Nintendo Entertainment System (SNES)',
-        20: 'Nintendo DS',
-        21: 'Nintendo GameCube',
-        22: 'Game Boy Color',
-        23: 'Dreamcast',
-        24: 'Game Boy Advance',
-        25: 'Amstrad CPC',
-        26: 'ZX Spectrum',
-        27: 'MSX',
-        29: 'Sega Mega Drive/Genesis',
-        30: 'Sega 32X',
-        32: 'Sega Saturn',
-        33: 'Game Boy',
-        34: 'Android',
-        35: 'Sega Game Gear',
-        36: 'Xbox Live Arcade',
-        37: 'Nintendo 3DS',
-        38: 'PlayStation Portable',
-        39: 'iOS',
-        41: 'Wii U',
-        42: 'N-Gage',
-        44: 'Tapwave Zodiac',
-        45: 'PlayStation Network',
-        46: 'PlayStation Vita',
-        47: 'Virtual Console (Nintendo)',
-        48: 'PlayStation 4',
-        49: 'Xbox One',
-        50: '3DO Interactive Multiplayer',
-        51: 'Family Computer Disk System',
-        52: 'Arcade',
-        53: 'MSX2',
-        55: 'Mobile',
-        56: 'WiiWare',
-        57: 'WonderSwan',
-        58: 'Super Famicom',
-        59: 'Atari 2600',
-        60: 'Atari 7800',
-        61: 'Atari Lynx',
-        62: 'Atari Jaguar',
-        63: 'Atari ST/STE',
-        64: 'Sega Master System',
-        65: 'Atari 8-bit',
-        66: 'Atari 5200',
-        67: 'Intellivision',
-        68: 'ColecoVision',
-        69: 'BBC Microcomputer System',
-        70: 'Vectrex',
-        71: 'Commodore VIC-20',
-        72: 'Ouya',
-        73: 'BlackBerry OS',
-        74: 'Windows Phone',
-        75: 'Apple II',
-        77: 'Sharp X1',
-        78: 'Sega CD',
-        79: 'Neo Geo MVS',
-        80: 'Neo Geo AES',
-        82: 'Web browser',
-        84: 'SG-1000',
-        85: 'Donner Model 30',
-        86: 'TurboGrafx-16/PC Engine',
-        87: 'Virtual Boy',
-        88: 'Odyssey',
-        89: 'Microvision',
-        90: 'Commodore PET',
-        91: 'Bally Astrocade',
-        92: 'SteamOS',
-        93: 'Commodore 16',
-        94: 'Commodore Plus/4',
-        95: 'PDP-1',
-        96: 'PDP-10',
-        97: 'PDP-8',
-        98: 'DEC GT40',
-        99: 'Family Computer (FAMICOM)',
-        100: 'Analogue electronics',
-        101: 'Ferranti Nimrod Computer',
-        102: 'EDSAC',
-        103: 'PDP-7',
-        104: 'HP 2100',
-        105: 'HP 3000',
-        106: 'SDS Sigma 7',
-        107: 'Call-A-Computer time-shared mainframe computer system',
-        108: 'PDP-11',
-        109: 'CDC Cyber 70',
-        110: 'PLATO',
-        111: 'Imlac PDS-1',
-        112: 'Microcomputer',
-        113: 'OnLive Game System',
-        114: 'Amiga CD32',
-        115: 'Apple IIGS',
-        116: 'Acorn Archimedes',
-        117: 'Philips CD-i',
-        118: 'FM Towns',
-        119: 'Neo Geo Pocket',
-        120: 'Neo Geo Pocket Color',
-        121: 'Sharp X68000',
-        122: 'Nuon',
-        123: 'WonderSwan Color',
-        124: 'SwanCrystal',
-        125: 'PC-8801',
-        126: 'TRS-80',
-        127: 'Fairchild Channel F',
-        128: 'PC Engine SuperGrafx',
-        129: 'Texas Instruments TI-99',
-        130: 'Nintendo Switch',
-        131: 'Nintendo PlayStation',
-        132: 'Amazon Fire TV',
-        133: 'Philips Videopac G7000',
-        134: 'Acorn Electron',
-        135: 'Hyper Neo Geo 64',
-        136: 'Neo Geo CD',
-        137: 'New Nintendo 3DS',
-        138: 'VC 4000',
-        139: '1292 Advanced Programmable Video System',
-        140: 'AY-3-8500',
-        141: 'AY-3-8610',
-        142: 'PC-50X Family',
-        143: 'AY-3-8760',
-        144: 'AY-3-8710',
-        145: 'AY-3-8603',
-        146: 'AY-3-8605',
-        147: 'AY-3-8606',
-        148: 'AY-3-8607',
-        149: 'PC-98',
-        150: 'Turbografx-16/PC Engine CD',
-        151: 'TRS-80 Color Computer',
-        152: 'FM-7',
-        153: 'Dragon 32/64',
-        154: 'Amstrad PCW',
-        155: 'Tatung Einstein',
-        156: 'Thomson MO5',
-        157: 'NEC PC-6000 Series',
-        158: 'Commodore CDTV',
-        159: 'Nintendo DSi',
-        160: 'Nintendo eShop',
-        161: 'Windows Mixed Reality',
-        162: 'Oculus VR',
-        163: 'SteamVR',
-        164: 'Daydream',
-        165: 'PlayStation VR'
-    }
 
     result_value = all_platforms.get(search)                            # Attempt to find the ID in the array (sets to None if not found)
 
@@ -337,7 +347,7 @@ def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
 
         total = 0
 
-    while offset <= 10:
+    while offset <= total:
 
         logger.info("Scraping games {} - {} (of {})...".format(offset, offset + 49, total))
         platform_games = igdb_obj.games({'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
@@ -374,23 +384,14 @@ def write_platform_sheet(worksheet, platform_games):
     :return: 0
     """
 
-    color_black = (0.0, 0.0, 0.0, 1.0)
-    color_white = (1.0, 1.0, 1.0, 1.0)
-    color_black_json = {'red': 0.0, 'blue': 0.0, 'green': 0.0, 'alpha': 1.0}
-    color_white_json = {'red': 1.0, 'blue': 1.0, 'green': 1.0, 'alpha': 1.0}
-
-    table_header_border_leftend = {
-        'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}}
-    }
-
-    table_header_border_middle = {
-        'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}},
-        'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}}
-    }
-
-    table_header_border_rightend = {
-        'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}},
-    }
+    columns = OrderedDict([
+        ('left_rating',      {'col': 'B', 'key': 'total_rating'}),
+        ('left_name',        {'col': 'C', 'key': 'name'}),
+        ('left_genres',      {'col': 'D', 'key': 'genres'}),
+        ('left_release',     {'col': 'E', 'key': 'first_release_date'}),
+        ('middle_rating',    {'col': 'G', 'key': 'total_rating'}),
+        ('middle_name',      {'col': 'H', 'key': 'name'})
+    ])
 
     full_border = {
         'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
@@ -399,68 +400,40 @@ def write_platform_sheet(worksheet, platform_games):
         'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}}
     }
 
-    fixed_cells = {
-        'B2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
-        'C2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
-        'D2': {'label': 'Genres',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
-        'E2': {'label': 'Release Date',         'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
-        'G2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
-        'H2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
-        'J2': {'label': 'Number',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
-        'K2': {'label': 'Statistic',            'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
-        'L2': {'label': 'Percent',              'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
-        'K3': {'label': 'Average Game Rating',  'upper': False},
-        'K4': {'label': 'Game Ratings of 90+',  'upper': False},
-        'K5': {'label': 'Game Ratings of 80+',  'upper': False},
-        'K6': {'label': 'Game Ratings of 70+',  'upper': False},
-        'K7': {'label': 'Game Ratings of 40-',  'upper': False},
-        'K8': {'label': 'Games Rated',          'upper': False},
-        'K9': {'label': 'Total Games',          'upper': False},
-    }
+    worksheet.cell('J9').value = len(platform_games)
 
-    fixed_full_borders = {'start': 'J3', 'end': 'L9'}
+    current_row = 3
 
-    # total_platform_games = len(platform_games)
+    for game in sorted(platform_games, key=lambda n: n['name']):
 
-    print("Adjusting column widths...")
+        print("Game: {}".format(game['name']))
 
-    worksheet.adjust_column_width(0, 0, 25)     # Left margin
-    worksheet.adjust_column_width(1, 1, 75)     # Left side game rating
-    worksheet.adjust_column_width(2, 2, 300)    # Left side game name
-    worksheet.adjust_column_width(3, 3, 250)    # Left side game genres
-    worksheet.adjust_column_width(4, 4, 135)    # Left side game release date
-    worksheet.adjust_column_width(5, 5, 50)     # Separator
-    worksheet.adjust_column_width(6, 6, 75)     # Middle game rating
-    worksheet.adjust_column_width(7, 7, 300)    # Middle game name
-    worksheet.adjust_column_width(8, 8, 50)     # Separator
-    worksheet.adjust_column_width(9, 9, 75)     # Right side number
-    worksheet.adjust_column_width(10, 10, 200)  # Right side statistic name
-    worksheet.adjust_column_width(11, 11, 75)   # Right side percentage
+        for column in columns.keys():
+            c = worksheet.cell(str("{}{}".format(columns[column]['col'], current_row)))
+            c.unlink()
+            c.borders = full_border
+            try:
+                if columns[column]['key'] == 'total_rating':
+                    if game['total_rating_count'] < 1:
+                        value = ''
+                    else:
+                        value = game['total_rating']
+                elif columns[column]['key'] == 'genres':
+                    genre_names = []
+                    for g_id in game['genres']:
+                        genre_names.append(readable_genre(g_id))
+                    value = ', '.join(genre_names)
+                elif columns[column]['key'] == 'first_release_date':
+                    value = readable_time(game['first_release_date'])
+                else:
+                    value = game[columns[column]['key']]
+            except KeyError:
+                value = ''
+            c.value = value
+            c.link(worksheet, True)
+            sleep(1)
 
-    print("Writing and formatting fixed cells...")
-
-    # Write and format fixed cells
-    for xy in sorted(fixed_cells.keys()):
-        print("Writing fixed cell '{}'...".format(xy))
-        c = worksheet.cell(xy)
-        c.unlink()
-        if 'background' in fixed_cells[xy].keys():
-            c.color = fixed_cells[xy]['background']
-        if 'foreground' in fixed_cells[xy].keys():
-            c.set_text_format('foregroundColor', fixed_cells[xy]['foreground'])
-        if 'border' in fixed_cells[xy].keys():
-            c.borders = fixed_cells[xy]['border']
-        if 'bold' in fixed_cells[xy].keys():
-            c.set_text_format('bold', True)
-        if fixed_cells[xy]['upper']:
-            c.value = fixed_cells[xy]['label'].upper()
-        else:
-            c.value = fixed_cells[xy]['label']
-        c.link(worksheet, True)
-
-    print("Adding full borders...")
-
-    # Add full borders here
+        current_row += 1
 
     return 0
 
@@ -516,10 +489,6 @@ def main():
 
     sheet = open_sheet("Gamelister Test")
 
-    write_platform_sheet(sheet, None)
-
-    sys.exit()
-
     db = igdb_api_connect()
 
     main_platform = 'Nintendo Switch'
@@ -530,20 +499,9 @@ def main():
     for other_platform in other_platforms:
         other_platform_ids.append(find_platform(other_platform))
 
-    platform_games = get_platform_games(db, find_platform(main_platform), other_platform_ids)
+    current_platform_games = get_platform_games(db, find_platform(main_platform), other_platform_ids)
 
-    row = 3
-
-    for game in platform_games:
-        platforms = []
-        for platform in game['platforms']:
-            platforms.append(find_platform(platform))
-        print("ID: {0:<06d} Game: {1:<60s} Platforms: {2:<s}".format(game['id'], game['name'], ', '.join(platforms)))
-        sheet.update_cell(str("B{}").format(row), str(game['name']))
-        # sheet.update_cell(str("B{}").format(row), str(game['name']))
-        sheet.update_cell(str("C{}").format(row), ', '.join(platforms))
-        sheet.update_cell(str("D{}").format(row), readable_time(int(game['first_release_date'])))
-        row += 1
+    write_platform_sheet(sheet, current_platform_games)
 
     sys.exit()
 
