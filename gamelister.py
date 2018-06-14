@@ -11,8 +11,6 @@ import datetime
 
 import pygsheets
 
-from time import sleep
-from collections import OrderedDict
 from igdb_api_python import igdb
 
 # API credential files
@@ -362,6 +360,9 @@ def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
             except KeyError:
                 continue
 
+            if game['name'].startswith("duplicate"):                    # Skip duplicates
+                continue
+
             for p_id in game['platforms']:
                 if p_id not in platforms_allowed:                       # Skip non-allowed platforms
                     disallowed = True
@@ -376,22 +377,15 @@ def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
     return all_matched_games
 
 
-def write_platform_sheet(worksheet, platform_games):
+def write_platform_sheet(worksheet, platform_games, main_platform, other_platforms):
     """
-    Initialize dimensions on a given spreadsheet
+    Build a game matrix and write it to a worksheet
     :param worksheet: worksheet to work on
     :param platform_games: array of games to write
+    :param main_platform: main platform searched for
+    :param other_platforms: other platforms allowed
     :return: 0
     """
-
-    columns = OrderedDict([
-        ('left_rating',      {'col': 'B', 'key': 'total_rating'}),
-        ('left_name',        {'col': 'C', 'key': 'name'}),
-        ('left_genres',      {'col': 'D', 'key': 'genres'}),
-        ('left_release',     {'col': 'E', 'key': 'first_release_date'}),
-        ('middle_rating',    {'col': 'G', 'key': 'total_rating'}),
-        ('middle_name',      {'col': 'H', 'key': 'name'})
-    ])
 
     full_border = {
         'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
@@ -400,40 +394,62 @@ def write_platform_sheet(worksheet, platform_games):
         'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}}
     }
 
-    worksheet.cell('J9').value = len(platform_games)
+    start_row = 6
 
-    current_row = 3
+    number_exclusives = 0
+
+    other_platform_list = []
+
+    for other_platform in other_platforms:
+        other_platform_list.append(find_platform(other_platform))
+
+    worksheet.cell('C3').value = find_platform(main_platform)
+    worksheet.cell('D3').value = ', '.join(other_platform_list)
+    worksheet.cell('F3').value = len(platform_games)
+
+    game_matrix = []
 
     for game in sorted(platform_games, key=lambda n: n['name']):
 
-        print("Game: {}".format(game['name']))
+        try:
+            genres_list = []
+            for genre in game['genres']:
+                genres_list.append(readable_genre(genre))
+            genres = ', '.join(genres_list)
+        except KeyError:
+            genres = ''
 
-        for column in columns.keys():
-            c = worksheet.cell(str("{}{}".format(columns[column]['col'], current_row)))
-            c.unlink()
-            c.borders = full_border
-            try:
-                if columns[column]['key'] == 'total_rating':
-                    if game['total_rating_count'] < 1:
-                        value = ''
-                    else:
-                        value = game['total_rating']
-                elif columns[column]['key'] == 'genres':
-                    genre_names = []
-                    for g_id in game['genres']:
-                        genre_names.append(readable_genre(g_id))
-                    value = ', '.join(genre_names)
-                elif columns[column]['key'] == 'first_release_date':
-                    value = readable_time(game['first_release_date'])
-                else:
-                    value = game[columns[column]['key']]
-            except KeyError:
-                value = ''
-            c.value = value
-            c.link(worksheet, True)
-            sleep(1)
+        try:
+            release_date = readable_time(game['first_released_date'])
+        except KeyError:
+            release_date = ''
 
-        current_row += 1
+        try:
+            platform_list = []
+            for platform in game['platforms']:
+                platform_list.append(find_platform(platform))
+            platforms = ', '.join(platform_list)
+        except KeyError:
+            platforms = ''
+
+        try:
+            if int(game['total_rating_count']) > 1:
+                rating = game['total_rating']
+            else:
+                rating = ''
+        except KeyError:
+            rating = ''
+
+        if len(game['platforms']) == 1:
+            number_exclusives += 1
+
+        game_matrix.append([rating, game['name'], genres, platforms, release_date])
+
+    worksheet.cell('B3').value = number_exclusives
+
+    cell_range = str('B{}:F{}'.format(start_row, start_row + len(platform_games)))
+
+    worksheet.update_cells(crange=cell_range, values=game_matrix)
 
     return 0
 
@@ -494,14 +510,16 @@ def main():
     main_platform = 'Nintendo Switch'
     other_platforms = ['PC (Microsoft Windows)', 'Wii U']
 
+    main_platform_id = find_platform(main_platform)
+
     other_platform_ids = []
 
     for other_platform in other_platforms:
         other_platform_ids.append(find_platform(other_platform))
 
-    current_platform_games = get_platform_games(db, find_platform(main_platform), other_platform_ids)
+    current_platform_games = get_platform_games(db, main_platform_id, other_platform_ids)
 
-    write_platform_sheet(sheet, current_platform_games)
+    write_platform_sheet(sheet, current_platform_games, main_platform_id, other_platform_ids)
 
     sys.exit()
 
