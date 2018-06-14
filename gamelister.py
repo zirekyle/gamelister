@@ -376,35 +376,49 @@ def write_platform_sheet(worksheet, platform_games):
 
     color_black = (0.0, 0.0, 0.0, 1.0)
     color_white = (1.0, 1.0, 1.0, 1.0)
+    color_black_json = {'red': 0.0, 'blue': 0.0, 'green': 0.0, 'alpha': 1.0}
+    color_white_json = {'red': 1.0, 'blue': 1.0, 'green': 1.0, 'alpha': 1.0}
 
-    dark_cell_border = {
-        'style': 'SOLID',
-        'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}
+    table_header_border_leftend = {
+        'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}}
     }
 
-    light_cell_border = {
-        'style': 'SOLID',
-        'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 1.0}
+    table_header_border_middle = {
+        'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}},
+        'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}}
+    }
+
+    table_header_border_rightend = {
+        'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 1.0, 'green': 1.0, 'blue': 1.0, 'alpha': 1.0}},
+    }
+
+    full_border = {
+        'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
+        'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
+        'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
+        'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}}
     }
 
     fixed_cells = {
-        'B2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'C2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'D2': {'label': 'Genres',               'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'E2': {'label': 'Release Date',         'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'G2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'H2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'J2': {'label': 'Number',               'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'K2': {'label': 'Statistic',            'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'L2': {'label': 'Percent',              'upper': True,  'background': color_black, 'foreground': color_white, 'border': dark_cell_border,   'border_type': 'LR'},
-        'K3': {'label': 'Average Game Rating',  'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K4': {'label': 'Game Ratings of 90+',  'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K5': {'label': 'Game Ratings of 80+',  'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K6': {'label': 'Game Ratings of 70+',  'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K7': {'label': 'Game Ratings of 40-',  'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K8': {'label': 'Games Rated',          'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
-        'K9': {'label': 'Total Games',          'upper': False, 'background': color_white, 'foreground': color_black, 'border': light_cell_border,  'border_type': 'UDLR'},
+        'B2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
+        'C2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
+        'D2': {'label': 'Genres',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
+        'E2': {'label': 'Release Date',         'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
+        'G2': {'label': 'Rating',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
+        'H2': {'label': 'Name',                 'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
+        'J2': {'label': 'Number',               'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_leftend,  'bold': True},
+        'K2': {'label': 'Statistic',            'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_middle,   'bold': True},
+        'L2': {'label': 'Percent',              'upper': True,  'background': color_black, 'foreground': color_white_json, 'border': table_header_border_rightend, 'bold': True},
+        'K3': {'label': 'Average Game Rating',  'upper': False},
+        'K4': {'label': 'Game Ratings of 90+',  'upper': False},
+        'K5': {'label': 'Game Ratings of 80+',  'upper': False},
+        'K6': {'label': 'Game Ratings of 70+',  'upper': False},
+        'K7': {'label': 'Game Ratings of 40-',  'upper': False},
+        'K8': {'label': 'Games Rated',          'upper': False},
+        'K9': {'label': 'Total Games',          'upper': False},
     }
+
+    fixed_full_borders = {'start': 'J3', 'end': 'L9'}
 
     # total_platform_games = len(platform_games)
 
@@ -429,13 +443,24 @@ def write_platform_sheet(worksheet, platform_games):
     for xy in sorted(fixed_cells.keys()):
         print("Writing fixed cell '{}'...".format(xy))
         c = worksheet.cell(xy)
-        c.color = fixed_cells[xy]['background']
-        c.text_format['foregroundColor'] = {'red': 1, 'blue': 1, 'green': 1}
-        c.text_format['bold'] = True
+        c.unlink()
+        if 'background' in fixed_cells[xy].keys():
+            c.color = fixed_cells[xy]['background']
+        if 'foreground' in fixed_cells[xy].keys():
+            c.set_text_format('foregroundColor', fixed_cells[xy]['foreground'])
+        if 'border' in fixed_cells[xy].keys():
+            c.borders = fixed_cells[xy]['border']
+        if 'bold' in fixed_cells[xy].keys():
+            c.set_text_format('bold', True)
         if fixed_cells[xy]['upper']:
             c.value = fixed_cells[xy]['label'].upper()
         else:
             c.value = fixed_cells[xy]['label']
+        c.link(worksheet, True)
+
+    print("Adding full borders...")
+
+    # Add full borders here
 
     return 0
 
