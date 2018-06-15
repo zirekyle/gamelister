@@ -51,7 +51,7 @@ platform_db = {
     3: 'Linux',
     4: 'Nintendo 64',
     5: 'Wii',
-    6: 'PC (Microsoft Windows)',
+    6: 'Windows',
     7: 'PlayStation',
     8: 'PlayStation 2',
     9: 'PlayStation 3',
@@ -61,8 +61,8 @@ platform_db = {
     14: 'Mac',
     15: 'Commodore C64/128',
     16: 'Amiga',
-    18: 'Nintendo Entertainment System (NES)',
-    19: 'Super Nintendo Entertainment System (SNES)',
+    18: 'Nintendo',
+    19: 'Super Nintendo',
     20: 'Nintendo DS',
     21: 'Nintendo GameCube',
     22: 'Game Boy Color',
@@ -71,7 +71,7 @@ platform_db = {
     25: 'Amstrad CPC',
     26: 'ZX Spectrum',
     27: 'MSX',
-    29: 'Sega Mega Drive/Genesis',
+    29: 'Sega Genesis',
     30: 'Sega 32X',
     32: 'Sega Saturn',
     33: 'Game Boy',
@@ -205,14 +205,14 @@ platform_db = {
 
 all_platforms = list(platform_db.values())
 
-computer_platforms = ['PC (Microsoft Windows)', 'Mac', 'Linux', 'SteamOS']
+computer_platforms = ['Windows', 'Mac', 'Linux', 'SteamOS']
 
 xbox_platforms = ['Xbox', 'Xbox 360', 'Xbox One', 'Xbox Live Arcade']
 
 playstation_platforms = ['PlayStation', 'PlayStation 2', 'PlayStation 3', 'PlayStation 4', 'PlayStation Portable',
                          'PlayStation Network', 'PlayStation Vita', 'PlayStation VR']
 
-nintendo_platforms = ['Nintendo Entertainment System (NES)', 'Super Nintendo Entertainment System (SNES)',
+nintendo_platforms = ['Nintendo', 'Super Nintendo',
                       'Nintendo 64', 'Nintendo GameCube', 'Wii U', 'Nintendo Switch', 'Nintendo DS', 'Nintendo 3DS',
                       'Virtual Console (Nintendo)', 'New Nintendo 3DS', 'Nintendo DSi', 'Nintendo eShop', 'Game Boy',
                       'Game Boy Advance', 'Game Boy Color']
@@ -338,6 +338,7 @@ def search_games(igdb_obj, options):
     time_now = (datetime.datetime.now().microsecond - (3600 * 6))
 
     all_matched_games = []
+    information = {}
 
     filters = {}
 
@@ -379,12 +380,16 @@ def search_games(igdb_obj, options):
 
     if 'release_status' in options.keys():
         if options['release_status'] == 'RELEASED':
-            filters['[first_released_date][le]']: time_now
+            filters['[first_released_date][le]'] = time_now
+            filters['[first_released_date][exists]'] = ''
         elif options['release_status'] == 'UNRELEASED':
-            filters['[first_released_date][gt]']: time_now
+            filters['[first_released_date][gt]'] = time_now
         else:
             if options['release_status'] != 'ALL':
                 raise ValueError("Invalid release status input. Valid statuses: RELEASED, UNRELEASED, ALL.")
+
+    for option in options.keys():
+        information[option] = 0
 
     try:
 
@@ -420,39 +425,53 @@ def search_games(igdb_obj, options):
                 for platform in game['platforms']:
                     if lookup('platforms', platform) not in options['search_platforms'] + options['allowed_platforms']:
                         disallowed = True                                                   # Skip non-allowed platforms
-                        # print("disallowed for platform")
+                    else:
+                        information['allowed_platforms'] += 1
 
             if 'disallowed_platforms' in options.keys():
                 for platform in game['platforms']:
                     if lookup('platforms', platform) in options['disallowed_platforms']:    # Skip disallowed platforms
+                        information['disallowed_platforms'] += 1
                         disallowed = True
 
             if 'allowed_genres' in options.keys():
                 for genre in game['genres']:
                     if lookup('genres', genre) not in options['search_genres'] + options['allowed_genres']:
                         disallowed = True                                                   # Skip non-allowed genres
+                    else:
+                        information['allowed_genres'] += 1
 
             if 'disallowed_genres' in options.keys():
                 for genre in game['genres']:
                     if lookup('genres', genre) in options['disallowed_genres']:          # Skip disallowed genres
+                        information['disallowed_genres'] += 1
                         disallowed = True
 
             if 'search_platforms' in options.keys():                                        # Move searched platforms to front
                 for platform in sorted(platform_db):
                     if platform in options['search_platforms']:
+                        information['search_platforms'] += 1
                         game['platforms'].insert(0, game['platforms'].pop(
                             game['platforms'].index(lookup('platforms', platform))))
 
             if 'search_genres' in options.keys():                                        # Move searched platforms to front
                 for genre in sorted(platform_db):
                     if genre in options['search_genres']:
+                        information['search_genres'] += 1
                         game['genres'].insert(0, game['genres'].pop(
                             game['genres'].index(lookup('genres', genre))))
+
+            if 'release_status' in options.keys():
+                if 'first_release_date' not in game.keys():
+                    if options['release_status'] == 'RELEASED':
+                        disallowed = True
 
             if not disallowed:
                 all_matched_games.append(game)
 
         offset += 50
+
+    options['information'] = information
 
     return all_matched_games
 
@@ -467,13 +486,17 @@ def write_game_sheet(worksheet, games, options):
     """
 
     # Fixed sheet data
-    data_start_row = 6
+    data_start_row = 12
     rating_column = 'B'
     first_column = 'B'
     last_column = 'F'
 
+    information_range = 'B3:J9'
+    statistics_range = 'H3:J9'
+
     if len(games) == 0:
         sys.exit("No games found.")
+
     else:
         print("Writing {} games to worksheet...".format(len(games)))
 
@@ -495,14 +518,51 @@ def write_game_sheet(worksheet, games, options):
     rating_cell_model.format = pygsheets.FormatType.NUMBER, '0"%"'
     rating_cell_model.set_text_alignment('CENTER')
     rating_cell_model.set_text_alignment('MIDDLE')
+    rating_cell_model.borders = full_border
     rating_cell_range.apply_format(rating_cell_model)
 
     border_cell_model = pygsheets.Cell('A1')
     border_cell_range = worksheet.get_values(
-        str('{}{}'.format(first_column, data_start_row)),
+        str('{}{}'.format('C', data_start_row)),
         str('{}{}'.format(last_column, data_start_row + len(games))), returnas='range')
     border_cell_model.borders = full_border
     border_cell_range.apply_format(border_cell_model)
+
+    information_matrix = [
+        [
+            options['information']['searched_platforms'],
+            "Searched Platforms",
+            ', '.join(options['search_platforms']),
+        ],
+        [
+            options['information']['searched_genres'],
+            "Searched Genres",
+            ', '.join(options['searched_genres']),
+        ],
+        [
+            options['information']['allowed_platforms'],
+            "Allowed Platforms",
+            ', '.join(options['allowed_platforms']),
+        ],
+        [
+            options['information']['allowed_genres'],
+            "Allowed Genres",
+            ', '.join(options['allowed_genres']),
+        ],
+        [
+            options['information']['disallowed_platforms'],
+            "Disallowed Platforms",
+            ', '.join(options['disallowed_platforms']),
+        ],
+        [
+            options['information']['disallowed_genres'],
+            "Disallowed Genres",
+            ', '.join(options['disallowed_genres']),
+        ]
+        [
+            options['re']
+        ]
+    ]
 
     if 'sort' not in options.keys():
         sort_mode = 'name'
@@ -533,7 +593,7 @@ def write_game_sheet(worksheet, games, options):
         if 'genres' in game.keys():
             genre_string = []
             for genre in game['genres']:
-                genre_string.append(str(lookup('genres',genre)))
+                genre_string.append(str(lookup('genres', genre)))
 
             genres_text = ', '.join(genre_string)
 
@@ -581,9 +641,6 @@ def main():
     options = {
         'search_platforms': ['Nintendo Switch', 'Wii U'],
         'search_platform_mode': 'any',
-        # 'search_genres': all_genres,
-        # 'search_genre_mode': 'any',
-        'allowed_platforms': computer_platforms,
         'disallowed_platforms': xbox_platforms + playstation_platforms + computer_platforms,
         'release_status': 'RELEASED',
         'sort': 'name',
