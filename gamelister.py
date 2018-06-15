@@ -6,7 +6,6 @@
 import json
 import logging
 import sys
-import csv
 import datetime
 
 import pygsheets
@@ -23,7 +22,32 @@ get_fields = ['id', 'name', 'total_rating', 'total_rating_count', 'category', 'g
 # Logger creation
 logger = logging.getLogger(__name__)
 
-all_platforms = {
+genre_db = {
+        2: 'Point-and-Click',
+        4: 'Fighting',
+        5: 'Shooter',
+        7: 'Music',
+        8: 'Platformer',
+        9: 'Puzzle',
+        10: 'Racing',
+        11: 'RTS',
+        12: 'RPG',
+        13: 'Simulator',
+        14: 'Sports',
+        15: 'Strategy',
+        16: 'Turn-based Strategy',
+        24: 'Tactics',
+        25: "Beat em up",
+        26: 'Trivia',
+        30: 'Pinball',
+        31: 'Adventure',
+        32: 'Indie',
+        33: 'Arcade'
+    }
+
+all_genres = list(genre_db.values())
+
+platform_db = {
     3: 'Linux',
     4: 'Nintendo 64',
     5: 'Wii',
@@ -179,13 +203,19 @@ all_platforms = {
     165: 'PlayStation VR'
 }
 
+all_platforms = list(platform_db.values())
+
 computer_platforms = ['PC (Microsoft Windows)', 'Mac', 'Linux', 'SteamOS']
 
-xbox_platforms = ['Xbox', 'Xbox 360', 'Xbox One']
+xbox_platforms = ['Xbox', 'Xbox 360', 'Xbox One', 'Xbox Live Arcade']
 
-playstation_platforms = ['Playstation', 'Playstation 2', 'Playstation 3', 'Playstation 4']
+playstation_platforms = ['PlayStation', 'PlayStation 2', 'PlayStation 3', 'PlayStation 4', 'PlayStation Portable',
+                         'PlayStation Network', 'PlayStation Vita', 'PlayStation VR']
 
-nintendo_platforms = ['Nintendo Entertainment System (NES)', 'Super Nintendo Entertainment System (SNES)', 'Nintendo 64', 'Nintendo Gamecube', 'Wii U', 'Nintendo Switch']
+nintendo_platforms = ['Nintendo Entertainment System (NES)', 'Super Nintendo Entertainment System (SNES)',
+                      'Nintendo 64', 'Nintendo GameCube', 'Wii U', 'Nintendo Switch', 'Nintendo DS', 'Nintendo 3DS',
+                      'Virtual Console (Nintendo)', 'New Nintendo 3DS', 'Nintendo DSi', 'Nintendo eShop', 'Game Boy',
+                      'Game Boy Advance', 'Game Boy Color']
 
 
 def igdb_api_connect():
@@ -220,58 +250,34 @@ def open_sheet(sheet_title, sheet_name=None):
     return google_sheet
 
 
-def find_platform(search):
+def lookup(database, search):
     """
-    Bi-directional function to return platform ID or name from an array
+    Bi-directional function to return ID or name from an array
+    :param database: which array to search
     :param search: ID or name to search for
     :return: ID or name to return
     """
-
-    # Initialize full platform ID array
-
-    result_value = all_platforms.get(search)                            # Attempt to find the ID in the array (sets to None if not found)
+    
+    if database == 'platforms':
+        db_obj = platform_db
+    elif database == 'genres':
+        db_obj = genre_db
+    else:
+        return 0
+    
+    result_value = db_obj.get(search)                            # Attempt to find the ID in the array (sets to None if not found)
 
     if not result_value:                                                # If not found, assume it is a name provided, and look for the ID
 
-        for platform_id, platform_name in all_platforms.items():        # Iterate all platforms
+        for database_id, database_name in db_obj.items():        # Iterate all platforms
 
-            if platform_name.lower() == str(search).lower():            # Match found! Set return_value to the platform ID
-                result_value = platform_id
+            if database_name.lower() == str(search).lower():            # Match found! Set return_value to the platform ID
+                result_value = database_id
 
     if not result_value:                                                # Found nothing, use 0
         result_value = 0
 
     return result_value
-
-
-def readable_genre(genre_id):
-
-    genre_ids = {
-        2: 'Point-and-Click',
-        4: 'Fighting',
-        5: 'Shooter',
-        7: 'Music',
-        8: 'Platformer',
-        9: 'Puzzle',
-        10: 'Racing',
-        11: 'RTS',
-        12: 'RPG',
-        13: 'Simulator',
-        14: 'Sports',
-        15: 'Strategy',
-        16: 'Turn-based Strategy',
-        24: 'Tactics',
-        25: "Beat em up",
-        26: 'Trivia',
-        30: 'Pinball',
-        31: 'Adventure',
-        32: 'Indie',
-        33: 'Arcade'
-    }
-
-    name = genre_ids.get(genre_id)
-
-    return name
 
 
 def readable_time(epoch_ms):
@@ -318,24 +324,67 @@ def get_all_games(igdb_obj, filter_group, field_group):
     return full_result
 
 
-def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
+def search_games(igdb_obj, options):
     """
     Return an array of games for a given platform from the API
     :param igdb_obj: IGDB API connection
-    :param platform_id: Platform to search for
-    :param other_platforms_allowed: Allowed platforms to list
+    :param options: array of options to search for and filter by
     :return: array of matched games
     """
 
     offset = 0
     limit = 50      # Max = 50
 
+    time_now = (datetime.datetime.now().microsecond - (3600 * 6))
+
     all_matched_games = []
 
-    platforms_allowed = other_platforms_allowed
-    platforms_allowed.append(platform_id)
+    filters = {}
 
-    filters = {'[platforms][eq]': platform_id}
+    if 'search_platforms' in options.keys():
+        platform_ids = []
+
+        for platform in options['search_platforms']:
+            platform_ids.append(str(lookup('platforms', platform)))
+
+        platform_string = ','.join(platform_ids)
+
+        if 'search_platform_mode' in options.keys():
+            if options['search_platform_mode'] == 'any':
+                filters['[platforms][any]'] = platform_string
+            elif options['search_platform_mode'] == 'all':
+                filters['[platforms][all]'] = platform_string
+            else:
+                raise ValueError("Invalid platform search mode input.")
+        else:
+            filters['[platforms][any]'] = platform_string
+
+    if 'search_genres' in options.keys():
+        genre_ids = []
+
+        for genre in options['search_genres']:
+            genre_ids.append(str(lookup('genres', genre)))
+
+        genre_string = ','.join(genre_ids)
+
+        if 'search_genre_mode' in options.keys():
+            if options['search_genre_mode'] == 'any':
+                filters['[genres][any]'] = genre_string
+            elif options['search_genre_mode'] == 'all':
+                filters['[genre][all]'] = genre_string
+            else:
+                raise ValueError("Invalid genre search mode input.")
+        else:
+            filters['[genres][any]'] = genre_string
+
+    if 'release_status' in options.keys():
+        if options['release_status'] == 'RELEASED':
+            filters['[first_released_date][le]']: time_now
+        elif options['release_status'] == 'UNRELEASED':
+            filters['[first_released_date][gt]']: time_now
+        else:
+            if options['release_status'] != 'ALL':
+                raise ValueError("Invalid release status input. Valid statuses: RELEASED, UNRELEASED, ALL.")
 
     try:
 
@@ -345,29 +394,60 @@ def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
 
         total = 0
 
-    while offset <= total:
+    while offset < (total + 1):
 
         logger.info("Scraping games {} - {} (of {})...".format(offset, offset + 49, total))
-        platform_games = igdb_obj.games({'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
+        matched_games = igdb_obj.games({'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
 
-        for game in platform_games:
+        if len(matched_games) == 0:
+            sys.exit("No games found! Filter dump: {}".format(json.dumps(filters, indent=4)))
+
+        for game in matched_games:
 
             disallowed = False
 
-            try:
-                if game['category'] == 1 or game['category'] == 3:      # Skip DLC and bundles
-                    continue
-            except KeyError:
+            if 'error' in game.keys() or 'name' not in game.keys():                         # Malformed or missing game
                 continue
 
-            if game['name'].startswith("duplicate"):                    # Skip duplicates
-                continue
-
-            for p_id in game['platforms']:
-                if p_id not in platforms_allowed:                       # Skip non-allowed platforms
+            if 'category' in game.keys():
+                if game['category'] == 1 or game['category'] == 3:                          # Skip DLC and bundles
                     disallowed = True
 
-            game['platforms'].insert(0, game['platforms'].pop(game['platforms'].index(platform_id)))
+            if game['name'].startswith('duplicate'):                                        # Skip duplicates
+                    disallowed = True
+
+            if 'allowed_platforms' in options.keys():
+                for platform in game['platforms']:
+                    if lookup('platforms', platform) not in options['search_platforms'] + options['allowed_platforms']:
+                        disallowed = True                                                   # Skip non-allowed platforms
+                        # print("disallowed for platform")
+
+            if 'disallowed_platforms' in options.keys():
+                for platform in game['platforms']:
+                    if lookup('platforms', platform) in options['disallowed_platforms']:    # Skip disallowed platforms
+                        disallowed = True
+
+            if 'allowed_genres' in options.keys():
+                for genre in game['genres']:
+                    if lookup('genres', genre) not in options['search_genres'] + options['allowed_genres']:
+                        disallowed = True                                                   # Skip non-allowed genres
+
+            if 'disallowed_genres' in options.keys():
+                for genre in game['genres']:
+                    if lookup('genres', genre) in options['disallowed_genres']:          # Skip disallowed genres
+                        disallowed = True
+
+            if 'search_platforms' in options.keys():                                        # Move searched platforms to front
+                for platform in sorted(platform_db):
+                    if platform in options['search_platforms']:
+                        game['platforms'].insert(0, game['platforms'].pop(
+                            game['platforms'].index(lookup('platforms', platform))))
+
+            if 'search_genres' in options.keys():                                        # Move searched platforms to front
+                for genre in sorted(platform_db):
+                    if genre in options['search_genres']:
+                        game['genres'].insert(0, game['genres'].pop(
+                            game['genres'].index(lookup('genres', genre))))
 
             if not disallowed:
                 all_matched_games.append(game)
@@ -377,15 +457,28 @@ def get_platform_games(igdb_obj, platform_id, other_platforms_allowed):
     return all_matched_games
 
 
-def write_platform_sheet(worksheet, platform_games, main_platform, other_platforms):
+def write_game_sheet(worksheet, games, options):
     """
     Build a game matrix and write it to a worksheet
     :param worksheet: worksheet to work on
-    :param platform_games: array of games to write
-    :param main_platform: main platform searched for
-    :param other_platforms: other platforms allowed
+    :param games: array of games to write
+    :param options: array of options to add to the sheet info
     :return: 0
     """
+
+    # Fixed sheet data
+    data_start_row = 6
+    rating_column = 'B'
+    first_column = 'B'
+    last_column = 'F'
+
+    if len(games) == 0:
+        sys.exit("No games found.")
+    else:
+        print("Writing {} games to worksheet...".format(len(games)))
+
+    if len(games) > worksheet.rows + data_start_row:
+        worksheet.rows = data_start_row + len(games)
 
     full_border = {
         'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
@@ -394,105 +487,83 @@ def write_platform_sheet(worksheet, platform_games, main_platform, other_platfor
         'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}}
     }
 
-    start_row = 6
+    rating_start = str("{}{}".format(rating_column, data_start_row))
+    rating_end = str("{}{}".format(rating_column, data_start_row + len(games)))
+    rating_cell_model = pygsheets.Cell(rating_start)
+    rating_cell_range = worksheet.get_values(rating_start, rating_end, returnas='range')
 
-    number_exclusives = 0
+    rating_cell_model.format = pygsheets.FormatType.NUMBER, '0"%"'
+    rating_cell_model.set_text_alignment('CENTER')
+    rating_cell_model.set_text_alignment('MIDDLE')
+    rating_cell_range.apply_format(rating_cell_model)
 
-    other_platform_list = []
+    border_cell_model = pygsheets.Cell('A1')
+    border_cell_range = worksheet.get_values(
+        str('{}{}'.format(first_column, data_start_row)),
+        str('{}{}'.format(last_column, data_start_row + len(games))), returnas='range')
+    border_cell_model.borders = full_border
+    border_cell_range.apply_format(border_cell_model)
 
-    for other_platform in other_platforms:
-        other_platform_list.append(find_platform(other_platform))
+    if 'sort' not in options.keys():
+        sort_mode = 'name'
+    else:
+        sort_mode = options['sort']
 
-    worksheet.cell('C3').value = find_platform(main_platform)
-    worksheet.cell('D3').value = ', '.join(other_platform_list)
-    worksheet.cell('F3').value = len(platform_games)
-
+    platform_count = {}
+    genre_count = {}
     game_matrix = []
 
-    for game in sorted(platform_games, key=lambda n: n['name']):
+    for game in sorted(games, key=lambda n: n[sort_mode]):
 
-        try:
-            genres_list = []
-            for genre in game['genres']:
-                genres_list.append(readable_genre(genre))
-            genres = ', '.join(genres_list)
-        except KeyError:
-            genres = ''
-
-        try:
-            release_date = readable_time(game['first_released_date'])
-        except KeyError:
-            release_date = ''
-
-        try:
-            platform_list = []
+        if 'platforms' in game.keys():
+            platform_string = []
             for platform in game['platforms']:
-                platform_list.append(find_platform(platform))
-            platforms = ', '.join(platform_list)
-        except KeyError:
-            platforms = ''
+                platform_string.append(str(lookup('platforms', platform)))
 
-        try:
-            if int(game['total_rating_count']) > 1:
-                rating = game['total_rating']
+            platforms_text = ', '.join(platform_string)
+
+            for platform in game['platforms']:
+                if platform in platform_count.keys():
+                    platform_count[platform] += 1
+                else:
+                    platform_count[platform] = 1
+        else:
+            platforms_text = ''
+
+        if 'genres' in game.keys():
+            genre_string = []
+            for genre in game['genres']:
+                genre_string.append(str(lookup('genres',genre)))
+
+            genres_text = ', '.join(genre_string)
+
+            for genre in game['genres']:
+                if genre in genre_count.keys():
+                    genre_count[genre] += 1
+                else:
+                    genre_count[genre] = 1
+        else:
+            genres_text = ''
+
+        if 'first_release_date' in game.keys():
+            release_text = readable_time(game['first_release_date'])
+        else:
+            release_text = ''
+
+        if 'total_rating' in game.keys() and 'total_rating_count' in game.keys():
+            if game['total_rating_count'] > 1:
+                rating_text = game['total_rating']
+                print("Raw rating: {}".format(game['total_rating']))
             else:
-                rating = ''
-        except KeyError:
-            rating = ''
+                rating_text = ''
+        else:
+            rating_text = ''
 
-        if len(game['platforms']) == 1:
-            number_exclusives += 1
+        game_matrix.append([rating_text, game['name'], genres_text, platforms_text, release_text])
 
-        game_matrix.append([rating, game['name'], genres, platforms, release_date])
-
-    worksheet.cell('B3').value = number_exclusives
-
-    cell_range = str('B{}:F{}'.format(start_row, start_row + len(platform_games)))
+    cell_range = str('B{}:F{}'.format(data_start_row, data_start_row + len(games)))
 
     worksheet.update_cells(crange=cell_range, values=game_matrix)
-
-    return 0
-
-
-def write_to_csv(csv_filename, object_input, field_names, sort_field):
-    """
-    Write the keys/values of an object into a given .csv
-    :param csv_filename: the filename to write to
-    :param object_input: the object to write
-    :param field_names: list of fields to write
-    :param sort_field: field to sort by
-    :return: success code (0: success, 1: failed)
-    """
-
-    with open(csv_filename, 'wt', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=field_names)
-        writer.writeheader()
-        for obj in sorted(object_input, key=lambda x: x[sort_field]):
-
-            try:
-                new_genre_list = []
-                for genre in obj['genres']:
-                    new_genre_list.append(readable_genre(genre))
-                obj['genres'] = ', '.join(new_genre_list)
-            except KeyError:
-                logging.info("No genre for {}".format(obj['name']))
-
-            try:
-                if obj['category'] == 1 or obj['category'] == 3:
-                    continue
-            except KeyError:
-                continue
-
-            try:
-                obj['first_release_date'] = readable_time(int(obj['first_release_date'] / 1000))
-            except KeyError:
-                logging.info("No release date for {}".format(obj['name']))
-
-            try:
-                writer.writerow(dict(obj.items()))
-            except UnicodeEncodeError:
-                obj['name'] = str(obj['name'].encode('utf-8'))
-                writer.writerow(dict(obj.items()))
 
     return 0
 
@@ -507,19 +578,20 @@ def main():
 
     db = igdb_api_connect()
 
-    main_platform = 'Nintendo Switch'
-    other_platforms = ['PC (Microsoft Windows)', 'Wii U']
+    options = {
+        'search_platforms': ['Nintendo Switch', 'Wii U'],
+        'search_platform_mode': 'any',
+        # 'search_genres': all_genres,
+        # 'search_genre_mode': 'any',
+        'allowed_platforms': computer_platforms,
+        'disallowed_platforms': xbox_platforms + playstation_platforms + computer_platforms,
+        'release_status': 'RELEASED',
+        'sort': 'name',
+    }
 
-    main_platform_id = find_platform(main_platform)
+    found_games = search_games(db, options)
 
-    other_platform_ids = []
-
-    for other_platform in other_platforms:
-        other_platform_ids.append(find_platform(other_platform))
-
-    current_platform_games = get_platform_games(db, main_platform_id, other_platform_ids)
-
-    write_platform_sheet(sheet, current_platform_games, main_platform_id, other_platform_ids)
+    write_game_sheet(sheet, found_games, options)
 
     sys.exit()
 
