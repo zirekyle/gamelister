@@ -292,38 +292,6 @@ def readable_time(epoch_ms):
     return datetime.datetime.fromtimestamp(int(epoch_ms)).strftime('%B %d, %Y')
 
 
-def get_all_games(igdb_obj, filter_group, field_group):
-    """
-    Return all games from the API, iterating through via offsets.
-    This is required because of the 50 response limit of the API.
-    :param igdb_obj: IGDB API connection
-    :param filter_group: group of filters to request by
-    :param field_group: group of fields to return
-    :return: list object of matching games
-    """
-
-    full_result = []
-    offset = 0
-
-    try:
-
-        total = int(igdb_obj.games({'filters': filter_group, 'scroll': 1}).headers['X-Count'])
-
-    except KeyError:
-
-        total = 50
-
-    while offset < total:
-
-        logger.info("Pulling results {} to {} (of {})...".format(offset, offset + 49, total))
-        result = igdb_obj.games({'filters': filter_group, 'fields': field_group, 'limit': 50, 'offset': offset})
-        logger.debug(json.dumps(result.json(), indent=4))
-        full_result += result.json()
-        offset += 50
-
-    return full_result
-
-
 def search_games(igdb_obj, options):
     """
     Return an array of games for a given platform from the API
@@ -339,6 +307,9 @@ def search_games(igdb_obj, options):
 
     all_matched_games = []
     information = {}
+
+    for key in options.keys():
+        information[key] = 0
 
     filters = {}
 
@@ -381,15 +352,13 @@ def search_games(igdb_obj, options):
     if 'release_status' in options.keys():
         if options['release_status'] == 'RELEASED':
             filters['[first_released_date][le]'] = time_now
-            filters['[first_released_date][exists]'] = ''
         elif options['release_status'] == 'UNRELEASED':
             filters['[first_released_date][gt]'] = time_now
         else:
             if options['release_status'] != 'ALL':
                 raise ValueError("Invalid release status input. Valid statuses: RELEASED, UNRELEASED, ALL.")
-
-    for option in options.keys():
-        information[option] = 0
+    else:
+        options['release_status'] = 'ALL'
 
     try:
 
@@ -435,11 +404,14 @@ def search_games(igdb_obj, options):
                         disallowed = True
 
             if 'allowed_genres' in options.keys():
-                for genre in game['genres']:
-                    if lookup('genres', genre) not in options['search_genres'] + options['allowed_genres']:
-                        disallowed = True                                                   # Skip non-allowed genres
-                    else:
-                        information['allowed_genres'] += 1
+                if 'genre' not in game.keys():
+                    disallowed = True
+                else:
+                    for genre in game['genres']:
+                        if lookup('genres', genre) not in options['search_genres'] + options['allowed_genres']:
+                            disallowed = True                                                   # Skip non-allowed genres
+                        else:
+                            information['allowed_genres'] += 1
 
             if 'disallowed_genres' in options.keys():
                 for genre in game['genres']:
@@ -491,7 +463,7 @@ def write_game_sheet(worksheet, games, options):
     first_column = 'B'
     last_column = 'F'
 
-    information_range = 'B3:J9'
+    information_range = 'B3:D9'
     statistics_range = 'H3:J9'
 
     if len(games) == 0:
@@ -528,41 +500,33 @@ def write_game_sheet(worksheet, games, options):
     border_cell_model.borders = full_border
     border_cell_range.apply_format(border_cell_model)
 
-    information_matrix = [
-        [
-            options['information']['searched_platforms'],
-            "Searched Platforms",
-            ', '.join(options['search_platforms']),
-        ],
-        [
-            options['information']['searched_genres'],
-            "Searched Genres",
-            ', '.join(options['searched_genres']),
-        ],
-        [
-            options['information']['allowed_platforms'],
-            "Allowed Platforms",
-            ', '.join(options['allowed_platforms']),
-        ],
-        [
-            options['information']['allowed_genres'],
-            "Allowed Genres",
-            ', '.join(options['allowed_genres']),
-        ],
-        [
-            options['information']['disallowed_platforms'],
-            "Disallowed Platforms",
-            ', '.join(options['disallowed_platforms']),
-        ],
-        [
-            options['information']['disallowed_genres'],
-            "Disallowed Genres",
-            ', '.join(options['disallowed_genres']),
-        ]
-        [
-            options['re']
-        ]
-    ]
+    show_text = {}
+    show_count = {}
+    information_matrix = []
+
+    information_labels = {
+        'search_platforms': 'Searched Platforms',
+        'search_genres': 'Searched Genres',
+        'allowed_platforms': 'Allowed Platforms',
+        'allow_genres': 'Allowed Genres',
+        'disallowed_platforms': 'Disallowed Platforms',
+        'disallowed_genres': 'Disallowed Genres'
+    }
+
+    for key in ['search_platforms', 'search_genres',
+                'allowed_platforms', 'allowed_genres',
+                'disallowed_platforms', 'disallowed_genres']:
+        if key in options.keys():
+            show_text[key] = ', '.join(options[key])
+            show_count[key] = options['information'][key]
+        else:
+            show_text[key] = ''
+            show_count[key] = ''
+        information_matrix.append([show_count[key], information_labels.get(key), show_text[key]])
+
+    information_matrix.append([len(games), 'Release Status', options['release_status']])
+
+    worksheet.update_cells(crange=information_range, values=information_matrix)
 
     if 'sort' not in options.keys():
         sort_mode = 'name'
@@ -638,12 +602,18 @@ def main():
 
     db = igdb_api_connect()
 
+    # options = {
+    #     'search_platforms': ['Nintendo Switch', 'Wii U'],
+    #     'search_platform_mode': 'any',
+    #     'disallowed_platforms': xbox_platforms + playstation_platforms + computer_platforms,
+    #     'release_status': 'RELEASED',
+    #     'sort': 'name',
+    # }
+
     options = {
-        'search_platforms': ['Nintendo Switch', 'Wii U'],
-        'search_platform_mode': 'any',
-        'disallowed_platforms': xbox_platforms + playstation_platforms + computer_platforms,
-        'release_status': 'RELEASED',
-        'sort': 'name',
+        'search_genres': ['RPG'],
+        'allowed_genres': ['Adventure'],
+        'search_platforms': xbox_platforms + playstation_platforms + nintendo_platforms,
     }
 
     found_games = search_games(db, options)
