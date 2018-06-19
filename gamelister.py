@@ -11,6 +11,7 @@ import datetime
 import pygsheets
 
 from igdb_api_python import igdb
+from googleapiclient.errors import HttpError
 
 # API credential files
 igdb_key_file = '.igdb_api_key'
@@ -225,29 +226,25 @@ def igdb_api_connect():
     """
 
     try:
-        api_file = open(igdb_key_file, "r")
+        api_file = open(igdb_key_file, "rt")
     except FileNotFoundError:
         sys.exit("API key file '{}' not found. Aborting.".format(igdb_key_file))
 
-    return igdb.igdb(api_file.readline())
+    return igdb.igdb(api_file.read().splitlines()[0])
 
 
-def open_sheet(sheet_title, sheet_name=None):
+def open_sheet(sheet_title, sheet_name=None, return_as='worksheet'):
     """
     Establish a connection to the Google Sheets API
     :param sheet_title: name of the spreadsheet to open
     :param sheet_name: name of the individual sheet to open
+    :param return_as: type of sheet object to return
     :return: active sheet object
     """
 
     sheet_api = pygsheets.authorize(service_file=gsheet_json_file)
 
-    if sheet_name:
-        google_sheet = sheet_api.open(sheet_title).worksheet_by_title(sheet_name)
-    else:
-        google_sheet = sheet_api.open(sheet_title).worksheet('index', '0')
-
-    return google_sheet
+    return sheet_api.open(sheet_title)
 
 
 def lookup(database, search):
@@ -323,7 +320,7 @@ def search_games(igdb_obj, options):
 
         if 'search_platform_mode' in options.keys():
             if options['search_platform_mode'] == 'any':
-                filters['[platforms][any]'] = platform_string
+                filters['[platforms][eq]'] = platform_string
             elif options['search_platform_mode'] == 'all':
                 filters['[platforms][all]'] = platform_string
             else:
@@ -341,7 +338,7 @@ def search_games(igdb_obj, options):
 
         if 'search_genre_mode' in options.keys():
             if options['search_genre_mode'] == 'any':
-                filters['[genres][any]'] = genre_string
+                filters['[genres][eq]'] = genre_string
             elif options['search_genre_mode'] == 'all':
                 filters['[genre][all]'] = genre_string
             else:
@@ -362,16 +359,27 @@ def search_games(igdb_obj, options):
 
     try:
 
-        total = int(igdb_obj.games({'filters': filters, 'scroll': 1}).headers['X-Count'])
+        if 'search' in options.keys():
+            total = int(igdb_obj.games({'search': options['search'], 'filters': filters, 'scroll': 1}).headers['X-Count'])
+        else:
+            total = int(igdb_obj.games({'filters': filters, 'scroll': 1}).headers['X-Count'])
 
     except KeyError:
 
         total = 0
 
-    while offset < (total + 1):
+    while offset < (total + 1) and offset < 10000:
+
+        if (offset + limit) >= 10000:
+            limit = 9999 - offset
+            logger.warning("Search exceeded 9,999 games. Trimming to the first 9,999 games found.")
 
         logger.info("Scraping games {} - {} (of {})...".format(offset, offset + 49, total))
-        matched_games = igdb_obj.games({'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
+
+        if 'search' in options.keys():
+            matched_games = igdb_obj.games({'search': options['search'], 'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
+        else:
+            matched_games = igdb_obj.games({'filters': filters, 'fields': get_fields, 'limit': limit, 'offset': offset}).json()
 
         if len(matched_games) == 0:
             sys.exit("No games found! Filter dump: {}".format(json.dumps(filters, indent=4)))
@@ -383,6 +391,10 @@ def search_games(igdb_obj, options):
             if 'error' in game.keys() or 'name' not in game.keys():                         # Malformed or missing game
                 continue
 
+            if 'search' in options.keys():
+                if options['search'] not in game['name']:
+                    continue
+
             if 'category' in game.keys():
                 if game['category'] == 1 or game['category'] == 3:                          # Skip DLC and bundles
                     disallowed = True
@@ -391,11 +403,18 @@ def search_games(igdb_obj, options):
                     disallowed = True
 
             if 'allowed_platforms' in options.keys():
-                for platform in game['platforms']:
-                    if lookup('platforms', platform) not in options['search_platforms'] + options['allowed_platforms']:
-                        disallowed = True                                                   # Skip non-allowed platforms
-                    else:
-                        information['allowed_platforms'] += 1
+                if 'platforms' not in game.keys():
+                    disallowed = True
+                else:
+                    for platform in game['platforms']:
+                        if 'search_platforms' in options.keys():
+                            combined_platforms = options['search_platforms'] + options['allowed_platforms']
+                        else:
+                            combined_platforms = options['allowed_platforms']
+                        if lookup('platforms', platform) not in combined_platforms:
+                            disallowed = True                                                   # Skip non-allowed platforms
+                        else:
+                            information['allowed_platforms'] += 1
 
             if 'disallowed_platforms' in options.keys():
                 for platform in game['platforms']:
@@ -404,11 +423,15 @@ def search_games(igdb_obj, options):
                         disallowed = True
 
             if 'allowed_genres' in options.keys():
-                if 'genre' not in game.keys():
+                if 'genres' not in game.keys():
                     disallowed = True
                 else:
                     for genre in game['genres']:
-                        if lookup('genres', genre) not in options['search_genres'] + options['allowed_genres']:
+                        if 'search_genres' in options.keys():
+                            combined_genres = options['search_genres'] + options['allowed_genres']
+                        else:
+                            combined_genres = options['allowed_genres']
+                        if lookup('genres', genre) not in combined_genres:
                             disallowed = True                                                   # Skip non-allowed genres
                         else:
                             information['allowed_genres'] += 1
@@ -448,23 +471,27 @@ def search_games(igdb_obj, options):
     return all_matched_games
 
 
-def write_game_sheet(worksheet, games, options):
+def write_game_sheet(sheet_api, games, options, new_sheet=False):
     """
     Build a game matrix and write it to a worksheet
-    :param worksheet: worksheet to work on
+    :param sheet_api: worksheet to work on
     :param games: array of games to write
     :param options: array of options to add to the sheet info
+    :param new_sheet: if true, write to a new worksheet
     :return: 0
     """
 
     # Fixed sheet data
     data_start_row = 12
-    rating_column = 'B'
-    first_column = 'B'
-    last_column = 'F'
+    left_rating_column = 'B'
+    left_name_column = 'C'
+    left_last_column = 'F'
+    right_rating_column = 'H'
+    right_name_column = 'I'
+    rating_range_cell = 'L3'
+    games_range_cell = 'L4'
 
     information_range = 'B3:D9'
-    statistics_range = 'H3:J9'
 
     if len(games) == 0:
         sys.exit("No games found.")
@@ -472,8 +499,31 @@ def write_game_sheet(worksheet, games, options):
     else:
         print("Writing {} games to worksheet...".format(len(games)))
 
+    backup_title = str('Data Set {}'.format(options['run_count']))
+
+    if 'title' in options.keys():
+        title = str(options['title'])
+    else:
+        title = backup_title
+
+    try:
+        if new_sheet:
+            base_worksheet = sheet_api.worksheet_by_title('Template')
+            worksheet = sheet_api.add_worksheet(title, src_worksheet=base_worksheet, index=-1)
+        else:
+            worksheet = sheet_api.worksheet_by_title(title)
+    except HttpError:
+        if new_sheet:
+            base_worksheet = sheet_api.worksheet_by_title('Template')
+            worksheet = sheet_api.add_worksheet(backup_title, src_worksheet=base_worksheet, index=-1)
+        else:
+            worksheet = sheet_api.worksheet_by_title(backup_title)
+
     if len(games) > worksheet.rows + data_start_row:
         worksheet.rows = data_start_row + len(games)
+
+    worksheet.cell(rating_range_cell).value = str('{}{}:{}{}'.format(left_rating_column, data_start_row, left_rating_column, data_start_row + len(games)))
+    worksheet.cell(games_range_cell).value = str('{}{}:{}{}'.format(left_rating_column, data_start_row, left_name_column, data_start_row + len(games)))
 
     full_border = {
         'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}},
@@ -482,23 +532,35 @@ def write_game_sheet(worksheet, games, options):
         'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0.0, 'green': 0.0, 'blue': 0.0, 'alpha': 0.0}}
     }
 
-    rating_start = str("{}{}".format(rating_column, data_start_row))
-    rating_end = str("{}{}".format(rating_column, data_start_row + len(games)))
-    rating_cell_model = pygsheets.Cell(rating_start)
-    rating_cell_range = worksheet.get_values(rating_start, rating_end, returnas='range')
+    rating_cell_model = pygsheets.Cell(str("{}{}".format(left_rating_column, data_start_row)))
 
     rating_cell_model.format = pygsheets.FormatType.NUMBER, '0"%"'
     rating_cell_model.set_text_alignment('CENTER')
     rating_cell_model.set_text_alignment('MIDDLE')
     rating_cell_model.borders = full_border
+    rating_cell_range = worksheet.get_values(
+        str("{}{}".format(left_rating_column, data_start_row)),
+        str("{}{}".format(left_rating_column, data_start_row + len(games))),
+        returnas='range')
+    rating_cell_range.apply_format(rating_cell_model)
+    rating_cell_range = worksheet.get_values(
+        str('{}{}'.format(right_rating_column, data_start_row)),
+        str('{}{}'.format(right_rating_column, data_start_row + len(games))),
+        returnas='range')
     rating_cell_range.apply_format(rating_cell_model)
 
     border_cell_model = pygsheets.Cell('A1')
-    border_cell_range = worksheet.get_values(
-        str('{}{}'.format('C', data_start_row)),
-        str('{}{}'.format(last_column, data_start_row + len(games))), returnas='range')
     border_cell_model.borders = full_border
+    border_cell_range = worksheet.get_values(
+        str('{}{}'.format(left_name_column, data_start_row)),
+        str('{}{}'.format(left_last_column, data_start_row + len(games))), returnas='range')
     border_cell_range.apply_format(border_cell_model)
+    border_cell_range = worksheet.get_values(
+        str('{}{}'.format(right_name_column, data_start_row)),
+        str('{}{}'.format(right_name_column, data_start_row + len(games))), returnas='range')
+    border_cell_range.apply_format(border_cell_model)
+
+    worksheet.cell('B1').value = title
 
     show_text = {}
     show_count = {}
@@ -577,7 +639,6 @@ def write_game_sheet(worksheet, games, options):
         if 'total_rating' in game.keys() and 'total_rating_count' in game.keys():
             if game['total_rating_count'] > 1:
                 rating_text = game['total_rating']
-                print("Raw rating: {}".format(game['total_rating']))
             else:
                 rating_text = ''
         else:
@@ -585,7 +646,7 @@ def write_game_sheet(worksheet, games, options):
 
         game_matrix.append([rating_text, game['name'], genres_text, platforms_text, release_text])
 
-    cell_range = str('B{}:F{}'.format(data_start_row, data_start_row + len(games)))
+    cell_range = str('{}{}:{}{}'.format(left_rating_column, data_start_row, left_last_column, data_start_row + len(games)))
 
     worksheet.update_cells(crange=cell_range, values=game_matrix)
 
@@ -602,23 +663,55 @@ def main():
 
     db = igdb_api_connect()
 
-    # options = {
-    #     'search_platforms': ['Nintendo Switch', 'Wii U'],
-    #     'search_platform_mode': 'any',
-    #     'disallowed_platforms': xbox_platforms + playstation_platforms + computer_platforms,
-    #     'release_status': 'RELEASED',
-    #     'sort': 'name',
-    # }
+    data_sets = [
 
-    options = {
-        'search_genres': ['RPG'],
-        'allowed_genres': ['Adventure'],
-        'search_platforms': xbox_platforms + playstation_platforms + nintendo_platforms,
-    }
+        {
+            'title': 'Final Fantasy',
+            'search': 'Final Fantasy',
+            'allowed_platforms': nintendo_platforms + playstation_platforms + xbox_platforms,
+        },
+        {
+            'title': 'SNES Generation Exclusives',
+            'search_platforms': ['Super Nintendo'],
+            'disallowed_platforms': ['Sega Genesis']
+        },
 
-    found_games = search_games(db, options)
+        {
+            'title': 'Console RPGs',
+            'search_genres': ['RPG'],
+            'allowed_genres': ['Adventure'],
+            'search_genre_mode': 'any',
+            'search_platforms': xbox_platforms + playstation_platforms + nintendo_platforms,
+        },
 
-    write_game_sheet(sheet, found_games, options)
+        {
+            'title': 'PlayStation Exclusives Released for PS4',
+            'search_platforms': ['PlayStation 4'],
+            'allowed_platforms': playstation_platforms + computer_platforms,
+        },
+
+        {
+            'title': 'Shared Switch & Wii U Games',
+            'search_platforms': ['Nintendo Switch', 'Wii U'],
+            'search_platform_mode': 'all'
+        },
+
+        {
+            'title': 'Switch Console Exclusives',
+            'search_platforms': ['Nintendo Switch'],
+            'allowed_platforms': computer_platforms
+        }
+
+
+    ]
+
+    run_count = 1
+
+    for options in data_sets:
+        options['run_count'] = str(run_count)
+        found_games = search_games(db, options)
+        write_game_sheet(sheet, found_games, options, new_sheet=True)
+        run_count += 1
 
     sys.exit()
 
